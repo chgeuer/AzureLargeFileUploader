@@ -1,11 +1,12 @@
 ﻿using Microsoft.WindowsAzure;
-using Microsoft.WindowsAzure.StorageClient;
+using Microsoft.WindowsAzure.Storage;
 using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Configuration;
+using Microsoft.WindowsAzure.Storage.Blob;
 
 namespace LargeFileUploader
 {
@@ -97,7 +98,7 @@ namespace LargeFileUploader
 
             CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
             CloudBlobContainer container = blobClient.GetContainerReference("mycontainer");
-            container.CreateIfNotExist();
+            container.CreateIfNotExists();
 
             var permission = container.GetPermissions();
             permission.PublicAccess = BlobContainerPublicAccessType.Container;
