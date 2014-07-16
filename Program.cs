@@ -10,6 +10,8 @@
 
         static void Main(string[] args)
         {
+            LargeFileUploaderUtils.Log = System.Console.Out.WriteLine;
+
             new FileInfo(@"C:\Users\chgeuer\Desktop\1.mp4")
                 .UploadAsync(
                     storageAccount: CloudStorageAccount.Parse("DefaultEndpointsProtocol=https;AccountName=storageaccount123;AccountKey=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX=="), 

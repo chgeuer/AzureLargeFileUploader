@@ -17,6 +17,19 @@
         const long GB = MB * 1024;
         public static int NumBytesPerChunk = 4 * MB; // A block may be up to 4 MB in size. 
 
+
+        static LargeFileUploaderUtils()
+        {
+            LargeFileUploaderUtils.Log = _ => Console.WriteLine(_);
+        }
+
+        public static Action<string> Log { get; set; }
+
+        private static void log(string format, params object[] args)
+        {
+            if (Log != null) { Log(string.Format(format, args)); }
+        }
+
         public static async Task<byte[]> GetFileContentAsync(this FileInfo file, long offset, int length)
         {
             using (var stream = file.OpenRead())
@@ -39,17 +52,14 @@
 
         private static void consoleExceptionHandler(Exception ex)
         {
-            Console.ResetColor();
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Error.WriteLine("Problem occured, trying again. Details of the problem: ");
+            log("Problem occured, trying again. Details of the problem: ");
             for (var e = ex; e != null; e = e.InnerException)
             {
                 Console.Error.WriteLine(e.Message);
             }
-            Console.Error.WriteLine("---------------------------------------------------------------------");
-            Console.Error.WriteLine(ex.StackTrace);
-            Console.ResetColor();
-            Console.Error.WriteLine("---------------------------------------------------------------------");
+            log("---------------------------------------------------------------------");
+            log(ex.StackTrace);
+            log("---------------------------------------------------------------------");
         }
 
         public static async Task UploadAsync(string inputFile, string storageConnectionString, string containerName)
@@ -203,7 +213,7 @@
                         DateTime.Now.ToLocalTime().Add(remaining));
                 };
 
-                Console.WriteLine(
+                log(
                     "Uploaded {0} ({1}) with {2} kB/sec ({3} MB/min), {4}",
                     absoluteProgress(index + blockData.Length, file.Length),
                     relativeProgress(index + blockData.Length, file.Length),
@@ -217,7 +227,7 @@
                 await blob.PutBlockListAsync(blockIdList);
             }, consoleExceptionHandler);
             executeUntilSuccess(() => saveListToFile(), consoleExceptionHandler);
-            Console.WriteLine("PutBlockList succeeded, finished upload to {0}", blob.Uri.AbsoluteUri);
+            log("PutBlockList succeeded, finished upload to {0}", blob.Uri.AbsoluteUri);
         }
     }
 }
