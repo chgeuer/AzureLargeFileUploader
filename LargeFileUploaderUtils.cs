@@ -87,7 +87,7 @@
 
         internal class BlockMetadata
         {
-            public BlockMetadata(int id, long length, int bytesPerChunk)
+            internal BlockMetadata(int id, long length, int bytesPerChunk)
             {
                 this.Id = id;
                 this.BlockId = Convert.ToBase64String(System.BitConverter.GetBytes(id));
@@ -120,16 +120,108 @@
                         })));
         }
 
+        public static Func<byte[], string> md5()
+        {
+            var hashFunction = MD5.Create();
+
+            return (content) => Convert.ToBase64String(hashFunction.ComputeHash(content));
+        }
+
+
+        private static string absoluteProgress(long current, long total)
+        {
+            if (total < kB)
+            {
+                // Bytes is reasonable
+                return string.Format("{0} of {1} bytes", current, total);
+            }
+            else if (total < 10 * MB)
+            {
+                // kB is a reasonable unit
+                return string.Format("{0} of {1} kByte", (current / kB), (total / kB));
+            }
+            else if (total < 10 * GB)
+            {
+                // MB is a reasonable unit
+                return string.Format("{0} of {1} MB", (current / MB), (total / MB));
+            }
+            else
+            {
+                // GB is a reasonable unit
+                return string.Format("{0} of {1} GB", (current / GB), (total / GB));
+            }
+        }
+
+        private static string relativeProgress(long current, long total)
+        {
+            return string.Format("{0} %", 
+                (100.0 * current / total).ToString("F3"));
+        }
+
+
+
+        internal class Statistics
+        {
+            public Statistics(long totalBytes) { this.TotalBytes = totalBytes; }
+
+            internal readonly DateTime InitialStartTime = DateTime.UtcNow;
+            internal readonly object _lock = new object();
+            internal long TotalBytes { get; private set; }
+            internal long Done { get; private set; }
+
+            internal void Add(long moreBytes, DateTime start)
+            {
+                long done; 
+                lock (_lock)
+                {
+                    this.Done += moreBytes;
+                    done = this.Done;
+                }
+
+                var kbPerSec = (((double)moreBytes) / (DateTime.UtcNow.Subtract(start).TotalSeconds * kB));
+                var MBPerMin = (((double)moreBytes) / (DateTime.UtcNow.Subtract(start).TotalMinutes * MB));
+
+                log(
+                    "Uploaded {0} ({1}) with {2} kB/sec ({3} MB/min), {4}",
+                    absoluteProgress(done, this.TotalBytes),
+                    relativeProgress(done, this.TotalBytes),
+                    kbPerSec.ToString("F0"),
+                    MBPerMin.ToString("F1"),
+                    estimatedArrivalTime()
+                    );
+            }
+
+            internal string estimatedArrivalTime()
+            {
+                var now = DateTime.UtcNow;
+
+                double elapsedSeconds = now.Subtract(InitialStartTime).TotalSeconds;
+                double progress = ((double)this.Done) / ((double)this.TotalBytes);
+
+                if (this.Done == 0) return "unknown time";
+
+                double remainingSeconds = elapsedSeconds * (1 - progress) / progress;
+
+                TimeSpan remaining = TimeSpan.FromSeconds(remainingSeconds);
+
+                return string.Format("{0} remaining, (expect to finish by {1} local time)",
+                    remaining.ToString("g"),
+                    now.ToLocalTime().Add(remaining));
+            }
+        }
+
         public static async Task UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName)
         {
-            var blobClient = storageAccount.CreateCloudBlobClient();
-            var container = blobClient.GetContainerReference(containerName);
-            await container.CreateIfNotExistsAsync();
-
             if (NumBytesPerChunk > 4 * MB) NumBytesPerChunk = 4 * MB;
             var blobName = file.Name;
             long fileLength = file.Length;
+
+            var blobClient = storageAccount.CreateCloudBlobClient();
+            var container = blobClient.GetContainerReference(containerName);
+            await container.CreateIfNotExistsAsync();
             var blockBlob = container.GetBlockBlobReference(blobName);
+
+            #region Which blocks exist in the file
 
             var allBlockInFile = Enumerable
                  .Range(0, 1 + ((int)(fileLength / NumBytesPerChunk)))
@@ -137,8 +229,11 @@
                  .ToList();
             var blockIdList = allBlockInFile.Select(_ => _.BlockId).ToList();
 
-            List<BlockMetadata> blocksToUpload = null;
+            #endregion
 
+            #region Which blocks are already uploaded
+
+            List<BlockMetadata> missingBlocks = null;
             try
             {
                 var existingBlocks = (await blockBlob.DownloadBlockListAsync(
@@ -149,92 +244,38 @@
                     .Where(_ => _.Length == NumBytesPerChunk)
                     .ToList();
 
-                blocksToUpload = allBlockInFile.Where(blockInFile => !existingBlocks.Any(existingBlock => existingBlock.Name == blockInFile.BlockId)).ToList();
+                missingBlocks = allBlockInFile.Where(blockInFile => !existingBlocks.Any(existingBlock => 
+                    existingBlock.Name == blockInFile.BlockId && 
+                    existingBlock.Length == blockInFile.Length)).ToList();
             }
             catch (StorageException) 
             {
-                blocksToUpload = allBlockInFile;
+                missingBlocks = allBlockInFile;
             }
 
-            var md5 = ((Func<Func<byte[], string>>)(() =>
-            {
-                var hashFunction = MD5.Create();
-                return (content) => Convert.ToBase64String(hashFunction.ComputeHash(content));
-            }));
+            #endregion
 
-            DateTime initialStartTime = DateTime.UtcNow;
-            await LargeFileUploaderUtils.ForEachAsync(
-                source: allBlockInFile,
-                parallelUploads: 4, 
-                body: async (block) =>
+            Func<BlockMetadata, Statistics, Task> uploadBlock = async (block, stats) =>
                 {
                     byte[] blockData = await GetFileContentAsync(file, block.Index, block.Length);
                     string contentHash = md5()(blockData);
 
                     DateTime start = DateTime.UtcNow;
+
                     await ExecuteUntilSuccessAsync(async () =>
                     {
                         await blockBlob.PutBlockAsync(block.BlockId, new MemoryStream(blockData, true), contentHash);
                     }, consoleExceptionHandler);
 
-                    #region Statistics
+                    stats.Add(block.Length, start);
+                };
 
-                    var kbPerSec = (((double)block.Length) / (DateTime.UtcNow.Subtract(start).TotalSeconds * kB));
-                    var MBPerMin = (((double)block.Length) / (DateTime.UtcNow.Subtract(start).TotalMinutes * MB));
+            var s = new Statistics(missingBlocks.Sum(b => b.Length));
 
-                    Func<long, long, string> absoluteProgress = (current, total) =>
-                    {
-                        if (fileLength < kB)
-                        {
-                            // Bytes is reasonable
-                            return string.Format("{0} of {1} bytes", current, total);
-                        }
-                        else if (fileLength < 10 * MB)
-                        {
-                            // kB is a reasonable unit
-                            return string.Format("{0} of {1} kByte", (current / kB), (total / kB));
-                        }
-                        else if (fileLength < 10 * GB)
-                        {
-                            // MB is a reasonable unit
-                            return string.Format("{0} of {1} MB", (current / MB), (total / MB));
-                        }
-                        else
-                        {
-                            // GB is a reasonable unit
-                            return string.Format("{0} of {1} GB", (current / GB), (total / GB));
-                        }
-                    };
-
-                    Func<long, long, string> relativeProgress = (current, total) => string.Format(
-                        "{0} %", (100.0 * current / total).ToString("F3"));
-
-                    Func<long, long, string> estimatedArrivalTime = (current, total) =>
-                    {
-                        double elapsedSeconds = DateTime.UtcNow.Subtract(initialStartTime).TotalSeconds;
-                        double progress = ((double)current) / ((double)total);
-
-                        if (current == 0) return "unknown time";
-
-                        double remainingSeconds = elapsedSeconds * (1 - progress) / progress;
-
-                        TimeSpan remaining = TimeSpan.FromSeconds(remainingSeconds);
-
-                        return string.Format("{0} remaining, (expect to finish by {1} local time)",
-                            remaining.ToString("g"),
-                            DateTime.Now.ToLocalTime().Add(remaining));
-                    };
-
-                    log(
-                        "Uploaded {0} ({1}) with {2} kB/sec ({3} MB/min), {4}",
-                        absoluteProgress(block.Index + block.Length, fileLength),
-                        relativeProgress(block.Index + block.Length, fileLength),
-                        kbPerSec.ToString("F0"),
-                        MBPerMin.ToString("F1"),
-                        estimatedArrivalTime(block.Index + block.Length, fileLength));
-
-                    #endregion
-                });
+            await LargeFileUploaderUtils.ForEachAsync(
+                source: missingBlocks,
+                parallelUploads: 4,
+                body: blockMetadata => uploadBlock(blockMetadata, s));
 
             await ExecuteUntilSuccessAsync(async () => 
             { 
