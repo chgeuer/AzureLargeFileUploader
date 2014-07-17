@@ -19,6 +19,7 @@
         const long GB = MB * 1024;
         public static int NumBytesPerChunk = 4 * MB; // A block may be up to 4 MB in size. 
         public static Action<string> Log { get; set; }
+        public static void UseConsoleForLogging() { Log = Console.Out.WriteLine; }
 
         public static async Task UploadAsync(string inputFile, string storageConnectionString, string containerName, uint uploadParallelism = 1)
         {
