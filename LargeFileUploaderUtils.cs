@@ -44,6 +44,7 @@
             var allBlockInFile = Enumerable
                  .Range(0, 1 + ((int)(fileLength / NumBytesPerChunk)))
                  .Select(_ => new BlockMetadata(_, fileLength, NumBytesPerChunk))
+                 .Where(block => block.Length > 0)
                  .ToList();
             var blockIdList = allBlockInFile.Select(_ => _.BlockId).ToList();
 
