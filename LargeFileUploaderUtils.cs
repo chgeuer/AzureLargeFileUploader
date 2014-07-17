@@ -59,7 +59,7 @@
                         BlockListingFilter.Uncommitted,
                         AccessCondition.GenerateEmptyCondition(),
                         new BlobRequestOptions { },
-                        new OperationContext()))
+                        new OperationContext { }))
                     .Where(_ => _.Length == NumBytesPerChunk)
                     .ToList();
 
@@ -83,7 +83,17 @@
 
                 await ExecuteUntilSuccessAsync(async () =>
                 {
-                    await blockBlob.PutBlockAsync(block.BlockId, new MemoryStream(blockData, true), contentHash);
+                    await blockBlob.PutBlockAsync(
+                        blockId: block.BlockId, 
+                        blockData: new MemoryStream(blockData, true),
+                        contentMD5: contentHash,
+                        accessCondition: AccessCondition.GenerateEmptyCondition(),
+                        options: new BlobRequestOptions 
+                        { 
+                            StoreBlobContentMD5 = true,
+                            UseTransactionalMD5 = true
+                        },
+                        operationContext: new OperationContext());
                 }, consoleExceptionHandler);
 
                 stats.Add(block.Length, start);
