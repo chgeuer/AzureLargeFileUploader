@@ -1,22 +1,20 @@
 ﻿namespace LargeFileUploader
 {
-    using System.IO;
-    using System.Threading.Tasks;
-    using global::Microsoft.WindowsAzure.Storage;
-    using global::Microsoft.WindowsAzure.Storage.Auth;
+    using System;
 
     class Program
     {
 
         static void Main(string[] args)
         {
-            LargeFileUploaderUtils.Log = System.Console.Out.WriteLine;
+            LargeFileUploaderUtils.Log = Console.Out.WriteLine;
+            LargeFileUploaderUtils.NumBytesPerChunk = 512 * 1024;
 
-            new FileInfo(@"C:\Users\chgeuer\Desktop\1.mp4")
-                .UploadAsync(
-                    storageAccount: CloudStorageAccount.Parse("DefaultEndpointsProtocol=https;AccountName=storageaccount123;AccountKey=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX=="), 
-                    containerName: "myfolder")
-                .Wait();
+            LargeFileUploaderUtils.UploadAsync(
+                inputFile: @"C:\Users\chgeuer\format504015.mp4", 
+                storageConnectionString: "DefaultEndpointsProtocol=https;AccountName=accountname;AccountKey=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX==",
+                containerName: "dummy1",
+                uploadParallelism: 2).Wait();        
         }
     }
 }
