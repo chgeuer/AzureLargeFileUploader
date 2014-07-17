@@ -28,6 +28,10 @@
 
         public static async Task UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = 1)
         {
+            Console.WriteLine("Start uploading {0}", file.FullName);
+
+
+
             const int MAXIMUM_UPLOAD_SIZE = 4 * MB;
             if (NumBytesPerChunk > MAXIMUM_UPLOAD_SIZE) { NumBytesPerChunk = MAXIMUM_UPLOAD_SIZE; }
 
