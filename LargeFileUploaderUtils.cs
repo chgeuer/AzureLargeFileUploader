@@ -74,7 +74,7 @@
 
             #endregion
 
-            Func<BlockMetadata, Statistics, Task> uploadBlock = async (block, stats) =>
+            Func<BlockMetadata, Statistics, Task> uploadBlockAsync = async (block, stats) =>
             {
                 byte[] blockData = await GetFileContentAsync(file, block.Index, block.Length);
                 string contentHash = md5()(blockData);
@@ -104,7 +104,7 @@
             await LargeFileUploaderUtils.ForEachAsync(
                 source: missingBlocks,
                 parallelUploads: 4,
-                body: blockMetadata => uploadBlock(blockMetadata, s));
+                body: blockMetadata => uploadBlockAsync(blockMetadata, s));
 
             await ExecuteUntilSuccessAsync(async () =>
             {
