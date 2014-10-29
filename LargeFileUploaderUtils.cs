@@ -20,19 +20,41 @@
         public static int NumBytesPerChunk = 4 * MB; // A block may be up to 4 MB in size. 
         public static Action<string> Log { get; set; }
         public static void UseConsoleForLogging() { Log = Console.Out.WriteLine; }
+        const uint DEFAULT_PARALLELISM = 1;
 
-        public static async Task UploadAsync(string inputFile, string storageConnectionString, string containerName, uint uploadParallelism = 1)
+        public static async Task UploadAsync(string inputFile, string storageConnectionString, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             await new FileInfo(inputFile).UploadAsync(CloudStorageAccount.Parse(storageConnectionString), containerName, uploadParallelism);
         }
 
-        public static async Task UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = 1)
+        public static async Task UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
+        {
+            await UploadAsync(
+                fetchLocalData: (offset, length) => file.GetFileContentAsync(offset, length),
+                blobLenth: file.Length,
+                storageAccount: storageAccount,
+                containerName: containerName,
+                blobName: file.Name,
+                uploadParallelism: uploadParallelism);
+        }
+
+        public static async Task UploadAsync(this byte[] data, CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
+        {
+            await UploadAsync(
+                fetchLocalData: async (offset, count) => { return (new ArraySegment<byte>(data, (int)offset, count)).Array; },
+                blobLenth: data.Length,
+                storageAccount: storageAccount,
+                containerName: containerName,
+                blobName: blobName,
+                uploadParallelism: uploadParallelism);
+        }
+
+        public static async Task UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
+            CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM) 
         {
             const int MAXIMUM_UPLOAD_SIZE = 4 * MB;
             if (NumBytesPerChunk > MAXIMUM_UPLOAD_SIZE) { NumBytesPerChunk = MAXIMUM_UPLOAD_SIZE; }
 
-            var blobName = file.Name;
-            long fileLength = file.Length;
 
             var blobClient = storageAccount.CreateCloudBlobClient();
             var container = blobClient.GetContainerReference(containerName);
@@ -42,8 +64,8 @@
             #region Which blocks exist in the file
 
             var allBlockInFile = Enumerable
-                 .Range(0, 1 + ((int)(fileLength / NumBytesPerChunk)))
-                 .Select(_ => new BlockMetadata(_, fileLength, NumBytesPerChunk))
+                 .Range(0, 1 + ((int)(blobLenth / NumBytesPerChunk)))
+                 .Select(_ => new BlockMetadata(_, blobLenth, NumBytesPerChunk))
                  .Where(block => block.Length > 0)
                  .ToList();
             var blockIdList = allBlockInFile.Select(_ => _.BlockId).ToList();
@@ -76,7 +98,7 @@
 
             Func<BlockMetadata, Statistics, Task> uploadBlockAsync = async (block, stats) =>
             {
-                byte[] blockData = await GetFileContentAsync(file, block.Index, block.Length);
+                byte[] blockData = await fetchLocalData(block.Index, block.Length);
                 string contentHash = md5()(blockData);
 
                 DateTime start = DateTime.UtcNow;
@@ -84,12 +106,12 @@
                 await ExecuteUntilSuccessAsync(async () =>
                 {
                     await blockBlob.PutBlockAsync(
-                        blockId: block.BlockId, 
+                        blockId: block.BlockId,
                         blockData: new MemoryStream(blockData, true),
                         contentMD5: contentHash,
                         accessCondition: AccessCondition.GenerateEmptyCondition(),
-                        options: new BlobRequestOptions 
-                        { 
+                        options: new BlobRequestOptions
+                        {
                             StoreBlobContentMD5 = true,
                             UseTransactionalMD5 = true
                         },
@@ -118,6 +140,7 @@
         {
             if (Log != null) { Log(string.Format(format, args)); }
         }
+
         internal static async Task<byte[]> GetFileContentAsync(this FileInfo file, long offset, int length)
         {
             using (var stream = file.OpenRead())
@@ -136,6 +159,7 @@
                 return rest;
             }
         }
+
         internal static void consoleExceptionHandler(Exception ex)
         {
             log("Problem occured, trying again. Details of the problem: ");
@@ -147,11 +171,13 @@
             log(ex.StackTrace);
             log("---------------------------------------------------------------------");
         }
+
         internal static async Task ExecuteUntilSuccessAsync(Func<Task> action, Action<Exception> exceptionHandler)
         {
             bool success = false;
             while (!success)
             {
+                
                 try
                 {
                     await action();
@@ -163,6 +189,7 @@
                 }
             }
         }
+
         internal static Task ForEachAsync<T>(this IEnumerable<T> source, int parallelUploads, Func<T, Task> body)
         {
             return Task.WhenAll(
@@ -180,12 +207,14 @@
                     }
                 })));
         }
+
         internal static Func<byte[], string> md5()
         {
             var hashFunction = MD5.Create();
 
             return (content) => Convert.ToBase64String(hashFunction.ComputeHash(content));
         }
+
         internal class BlockMetadata
         {
             internal BlockMetadata(int id, long length, int bytesPerChunk)
@@ -202,6 +231,7 @@
             public string BlockId { get; private set; }
             public int Length { get; private set; }
         }
+
         internal class Statistics
         {
             public Statistics(long totalBytes) { this.TotalBytes = totalBytes; }
