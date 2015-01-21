@@ -41,7 +41,7 @@
         public static async Task UploadAsync(this byte[] data, CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             await UploadAsync(
-                fetchLocalData: async (offset, count) => { return (new ArraySegment<byte>(data, (int)offset, count)).Array; },
+                fetchLocalData: (offset, count) => { return Task.FromResult((new ArraySegment<byte>(data, (int)offset, count)).Array); },
                 blobLenth: data.Length,
                 storageAccount: storageAccount,
                 containerName: containerName,
@@ -50,16 +50,20 @@
         }
 
         public static async Task UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
-            CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM) 
+            CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
-            const int MAXIMUM_UPLOAD_SIZE = 4 * MB;
-            if (NumBytesPerChunk > MAXIMUM_UPLOAD_SIZE) { NumBytesPerChunk = MAXIMUM_UPLOAD_SIZE; }
-
-
             var blobClient = storageAccount.CreateCloudBlobClient();
             var container = blobClient.GetContainerReference(containerName);
             await container.CreateIfNotExistsAsync();
             var blockBlob = container.GetBlockBlobReference(blobName);
+            await UploadAsync(fetchLocalData, blobLenth, blockBlob, uploadParallelism);
+        }
+
+        public static async Task UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
+            CloudBlockBlob blockBlob, uint uploadParallelism = DEFAULT_PARALLELISM) 
+        {
+            const int MAXIMUM_UPLOAD_SIZE = 4 * MB;
+            if (NumBytesPerChunk > MAXIMUM_UPLOAD_SIZE) { NumBytesPerChunk = MAXIMUM_UPLOAD_SIZE; }
 
             #region Which blocks exist in the file
 
@@ -141,7 +145,7 @@
             if (Log != null) { Log(string.Format(format, args)); }
         }
 
-        internal static async Task<byte[]> GetFileContentAsync(this FileInfo file, long offset, int length)
+        public static async Task<byte[]> GetFileContentAsync(this FileInfo file, long offset, int length)
         {
             using (var stream = file.OpenRead())
             {
@@ -172,7 +176,7 @@
             log("---------------------------------------------------------------------");
         }
 
-        internal static async Task ExecuteUntilSuccessAsync(Func<Task> action, Action<Exception> exceptionHandler)
+        public static async Task ExecuteUntilSuccessAsync(Func<Task> action, Action<Exception> exceptionHandler)
         {
             bool success = false;
             while (!success)
