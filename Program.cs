@@ -21,11 +21,11 @@
 
             byte[] someData = Encoding.UTF8.GetBytes("Hallo");
 
-            someData.UploadAsync(
+            var address = someData.UploadAsync(
                 storageAccount: CloudStorageAccount.DevelopmentStorageAccount,
                 containerName: "dummy222222",
                 blobName: "somedata2.txt",
-                uploadParallelism: 1).Wait();
+                uploadParallelism: 1).Result;
         }
     }
 }

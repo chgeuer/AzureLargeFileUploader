@@ -27,9 +27,9 @@
             await new FileInfo(inputFile).UploadAsync(CloudStorageAccount.Parse(storageConnectionString), containerName, uploadParallelism);
         }
 
-        public static async Task UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
+        public static Task<string> UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
-            await UploadAsync(
+            return UploadAsync(
                 fetchLocalData: (offset, length) => file.GetFileContentAsync(offset, length),
                 blobLenth: file.Length,
                 storageAccount: storageAccount,
@@ -38,9 +38,9 @@
                 uploadParallelism: uploadParallelism);
         }
 
-        public static async Task UploadAsync(this byte[] data, CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
+        public static Task<string> UploadAsync(this byte[] data, CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
-            await UploadAsync(
+            return UploadAsync(
                 fetchLocalData: (offset, count) => { return Task.FromResult((new ArraySegment<byte>(data, (int)offset, count)).Array); },
                 blobLenth: data.Length,
                 storageAccount: storageAccount,
@@ -49,17 +49,17 @@
                 uploadParallelism: uploadParallelism);
         }
 
-        public static async Task UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
+        public static async Task<string> UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
             CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             var blobClient = storageAccount.CreateCloudBlobClient();
             var container = blobClient.GetContainerReference(containerName);
             await container.CreateIfNotExistsAsync();
             var blockBlob = container.GetBlockBlobReference(blobName);
-            await UploadAsync(fetchLocalData, blobLenth, blockBlob, uploadParallelism);
+            return await UploadAsync(fetchLocalData, blobLenth, blockBlob, uploadParallelism);
         }
 
-        public static async Task UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
+        public static async Task<string> UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
             CloudBlockBlob blockBlob, uint uploadParallelism = DEFAULT_PARALLELISM) 
         {
             const int MAXIMUM_UPLOAD_SIZE = 4 * MB;
@@ -138,6 +138,8 @@
             }, consoleExceptionHandler);
 
             log("PutBlockList succeeded, finished upload to {0}", blockBlob.Uri.AbsoluteUri);
+
+            return blockBlob.Uri.AbsoluteUri;
         }
 
         internal static void log(string format, params object[] args)
