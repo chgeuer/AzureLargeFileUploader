@@ -177,12 +177,13 @@
             }
         }
 
-        public static async Task DownloadRecomputeAndSetMD5Async(this CloudBlockBlob blockBlob)
+        public static async Task<string> DownloadRecomputeAndSetMD5Async(this CloudBlockBlob blockBlob)
         {
             var md5 = await blockBlob.DownloadRecomputeMD5Async();
             await blockBlob.FetchAttributesAsync();
             blockBlob.Properties.ContentMD5 = md5;
             await blockBlob.SetPropertiesAsync();
+            return md5;
         }
 
         internal static void log(string format, params object[] args)
