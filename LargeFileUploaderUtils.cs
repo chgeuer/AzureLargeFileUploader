@@ -22,6 +22,8 @@
         public static void UseConsoleForLogging() { Log = Console.Out.WriteLine; }
         const uint DEFAULT_PARALLELISM = 1;
 
+        #region overloads
+
         public static Task<string> UploadAsync(string inputFile, string storageConnectionString, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             return (new FileInfo(inputFile)).UploadAsync(CloudStorageAccount.Parse(storageConnectionString), containerName, uploadParallelism);
@@ -69,6 +71,8 @@
             var blockBlob = container.GetBlockBlobReference(blobName);
             return await UploadAsync(fetchLocalData, blobLenth, blockBlob, uploadParallelism);
         }
+
+        #endregion
 
         public static async Task<string> UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
             CloudBlockBlob blockBlob, uint uploadParallelism = DEFAULT_PARALLELISM) 
@@ -151,6 +155,34 @@
             log("PutBlockList succeeded, finished upload to {0}", blockBlob.Uri.AbsoluteUri);
 
             return blockBlob.Uri.AbsoluteUri;
+        }
+
+        public static async Task<string> DownloadRecomputeMD5Async(this CloudBlockBlob blockBlob)
+        {
+            // http://blog.monogram.sk/pokojny/2011/09/25/calculating-hash-while-processing-stream/
+            using (var stream = blockBlob.OpenRead())
+            {
+                using (MD5 md5 = MD5.Create())
+                {
+                    byte[] data = new byte[4 * 1024 * 1024];
+                    int byteCount = 0;
+                    while ((byteCount = await stream.ReadAsync(data, 0, data.Length)) > 0)
+                    {
+                        md5.TransformBlock(data, 0, byteCount, null, 0); 
+                    }
+                    md5.TransformFinalBlock(data, 0, 0); 
+
+                    return Convert.ToBase64String(md5.Hash);
+                }
+            }
+        }
+
+        public static async Task DownloadRecomputeAndSetMD5Async(this CloudBlockBlob blockBlob)
+        {
+            var md5 = await blockBlob.DownloadRecomputeMD5Async();
+            await blockBlob.FetchAttributesAsync();
+            blockBlob.Properties.ContentMD5 = md5;
+            await blockBlob.SetPropertiesAsync();
         }
 
         internal static void log(string format, params object[] args)
