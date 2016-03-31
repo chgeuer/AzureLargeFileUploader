@@ -27,6 +27,17 @@
             return (new FileInfo(inputFile)).UploadAsync(CloudStorageAccount.Parse(storageConnectionString), containerName, uploadParallelism);
         }
 
+        public static Task<string> UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
+        {
+            return UploadAsync(
+                fetchLocalData: (offset, length) => file.GetFileContentAsync(offset, length),
+                blobLenth: file.Length,
+                storageAccount: storageAccount,
+                containerName: containerName,
+                blobName: blobName,
+                uploadParallelism: uploadParallelism);
+        }
+
         public static Task<string> UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             return UploadAsync(
@@ -125,7 +136,7 @@
                 stats.Add(block.Length, start);
             };
 
-            var s = new Statistics(missingBlocks.Sum(b => b.Length));
+            var s = new Statistics(missingBlocks.Sum(b => (long)b.Length));
 
             await LargeFileUploaderUtils.ForEachAsync(
                 source: missingBlocks,
@@ -166,6 +177,10 @@
             }
         }
 
+        public static CloudStorageAccount ToStorageAccount(this string connectionString)
+        {
+            return CloudStorageAccount.Parse(connectionString);
+        }
         internal static void consoleExceptionHandler(Exception ex)
         {
             log("Problem occured, trying again. Details of the problem: ");
@@ -214,7 +229,7 @@
                 })));
         }
 
-        internal static Func<byte[], string> md5()
+        public static Func<byte[], string> md5()
         {
             var hashFunction = MD5.Create();
 

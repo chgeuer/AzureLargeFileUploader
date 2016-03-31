@@ -2,6 +2,7 @@
 {
     using Microsoft.WindowsAzure.Storage;
     using System;
+    using System.IO;
     using System.Text;
 
     class Program
@@ -10,7 +11,7 @@
         static void Main(string[] args)
         {
             LargeFileUploaderUtils.Log = Console.Out.WriteLine;
-            LargeFileUploaderUtils.NumBytesPerChunk = 8 * 1024;
+            LargeFileUploaderUtils.NumBytesPerChunk = 1 * 1024 * 1024;
 
             //LargeFileUploaderUtils.UploadAsync(
             //    inputFile: @"C:\Users\chgeuer\format504015.mp4",
@@ -18,14 +19,17 @@
             //    containerName: "dummy222222",
             //    uploadParallelism: 2).Wait();
 
+            var address = new FileInfo(@"C:\Users\chgeuer\ard.mp4").UploadAsync(
+                storageAccount: "DefaultEndpointsProtocol=https;AccountName=xxxxx;AccountKey=......................==".ToStorageAccount(),
+                containerName: "foo",
+                blobName: "bar/baz/1.mp4",
+                uploadParallelism: 4).Result;
 
-            byte[] someData = Encoding.UTF8.GetBytes("Hallo");
-
-            var address = someData.UploadAsync(
-                storageAccount: CloudStorageAccount.DevelopmentStorageAccount,
-                containerName: "dummy222222",
-                blobName: "somedata2.txt",
-                uploadParallelism: 1).Result;
+            //var address = LargeFileUploaderUtils.UploadAsync(
+            //    inputFile:  ,
+            //    storageConnectionString: "DefaultEndpointsProtocol=https;AccountName=xxxxx;AccountKey=......................==",
+            //    containerName: "ard", 
+            //    uploadParallelism: 5).Result;
         }
     }
 }
