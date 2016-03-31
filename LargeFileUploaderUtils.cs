@@ -41,7 +41,7 @@
         public static Task<string> UploadAsync(this FileInfo file, CloudStorageAccount storageAccount, string containerName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             return UploadAsync(
-                fetchLocalData: (offset, length) => file.GetFileContentAsync(offset, length),
+                fetchLocalData: (offset, length) => file.GetFileContentAsync(offset, (int) length),
                 blobLenth: file.Length,
                 storageAccount: storageAccount,
                 containerName: containerName,
@@ -52,7 +52,7 @@
         public static Task<string> UploadAsync(this byte[] data, CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             return UploadAsync(
-                fetchLocalData: (offset, count) => { return Task.FromResult((new ArraySegment<byte>(data, (int)offset, count)).Array); },
+                fetchLocalData: (offset, count) => { return Task.FromResult((new ArraySegment<byte>(data, (int)offset, (int) count)).Array); },
                 blobLenth: data.Length,
                 storageAccount: storageAccount,
                 containerName: containerName,
@@ -60,7 +60,7 @@
                 uploadParallelism: uploadParallelism);
         }
 
-        public static async Task<string> UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
+        public static async Task<string> UploadAsync(Func<long, long, Task<byte[]>> fetchLocalData, long blobLenth,
             CloudStorageAccount storageAccount, string containerName, string blobName, uint uploadParallelism = DEFAULT_PARALLELISM)
         {
             var blobClient = storageAccount.CreateCloudBlobClient();
@@ -70,7 +70,7 @@
             return await UploadAsync(fetchLocalData, blobLenth, blockBlob, uploadParallelism);
         }
 
-        public static async Task<string> UploadAsync(Func<long, int, Task<byte[]>> fetchLocalData, long blobLenth,
+        public static async Task<string> UploadAsync(Func<long, long, Task<byte[]>> fetchLocalData, long blobLenth,
             CloudBlockBlob blockBlob, uint uploadParallelism = DEFAULT_PARALLELISM) 
         {
             const int MAXIMUM_UPLOAD_SIZE = 4 * MB;
@@ -250,7 +250,7 @@
             public long Index { get; private set; }
             public int Id { get; private set; }
             public string BlockId { get; private set; }
-            public int Length { get; private set; }
+            public long Length { get; private set; }
         }
 
         internal class Statistics
